@@ -1,0 +1,19 @@
+MODELO;BIC;RECM;Normalidad;No auto-correlación;Parametros estables;Varianza constante;Media 0
+"ARIMA(0,1,1)(0,1,0)[12] 
+Box Cox transformation: lambda= 2 ";4601.49;429.0486;no;no;;no;
+"Regression with ARIMA(0,1,1)(0,1,0)[12] errors (outliers)
+Box Cox transformation: lambda= 2 ";4539.24;;no;no;;;
+"ARIMA(2,1,0)(0,1,0)[12] 
+Box Cox transformation: lambda= 2 ";4607.78;424.9401;no;no;;no;
+"Regression with ARIMA(2,1,0)(0,1,0)[12] errors (outliers)
+Box Cox transformation: lambda= 2 ";4543.62;;;no;;;
+"ARIMA(1,0,0)(2,0,0)[12] with non-zero mean 
+Box Cox transformation: lambda= 2 ";4963.8;367.3052;no;;;;
+"Regression with ARIMA(1,0,0)(2,0,0)[12] errors (outliers)
+Box Cox transformation: lambda= 2 ";4936.63;;;;;;
+"ARIMA(1,1,0)(2,1,0)[12] 
+Box Cox transformation: lambda= 2 ";4565.51;345.3897;no;no;;;
+"Regression with ARIMA(1,1,0)(2,1,0)[12] errors 
+Box Cox transformation: lambda= 2 ";4528.52;;no;;;no;
+"ARIMA(1,1,0)(2,1,0)[12] 
+Box Cox transformation: lambda= 3.172689 ";7410.35;326.2036;no;no;;;

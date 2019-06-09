@@ -1,0 +1,192 @@
+---
+title: "Trabajo final Series de tiempo"
+Author: "Eduardo Contreras Bohórquez"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#****************************************************************
+# INICIALIZACIÓN
+#****************************************************************
+
+```{r}
+library(readxl)
+library(forecast)
+library(tseries)
+library(forecast)
+library(lmtest)
+library(CombMSC)
+library(tsoutliers)
+
+dat <- read_excel("Base_Accidentes.xlsx")
+myts <- ts(dat$HER, start=c(2005,1),end=c(2018,7),frequency=12)
+origts <- myts
+summary(myts)
+plot(myts)
+```
+
+#****************************************************************
+# OBTENCIÓN SERIE ESTACIONARIA
+#****************************************************************
+
+```{r}
+#Test Dickey Fuller - pruebas de raices unitarias (H0: no estacionario)
+adf.test(myts) #no
+
+##Transformación Box-Cox para estabilizar la varianza
+#BoxCox.lambda(myts, method="loglik")
+mytsBC2 <- forecast::BoxCox(myts,lambda=2) #Lambda obtenido con R
+mytsBC3 <- forecast::BoxCox(myts,lambda=3.1726891131745796) #Lambda obtenido con python
+adf.test(mytsBC2) #no
+adf.test(mytsBC3) #no
+
+##Descomposición por diferenciación
+#dmyts <- diff(myts)
+Ddmyts <- diff(diff(myts), lag=12)
+DdmytsBC2 <- diff(diff(mytsBC2), lag=12)
+DdmytsBC3 <- diff(diff(mytsBC3), lag=12)
+adf.test(Ddmyts) #si
+adf.test(DdmytsBC2) #si
+adf.test(DdmytsBC3) #si
+```
+
+#****************************************************************
+# POSTULAR MODELO ARIMA
+#****************************************************************
+
+```{r}
+##Descomposición por diferenciación
+acf(Ddmyts, ci.type='ma', lag.max=60) #MA(1) sMA(1)
+pacf(Ddmyts, lag.max=60) #AR(2) AR(11)* sAR(2)
+
+acf(DdmytsBC2, ci.type='white', lag.max=60) #MA(1) sMA(1)
+pacf(DdmytsBC2, lag.max=60) #AR(2) AR(11)* sAR(2)
+
+acf(DdmytsBC3, ci.type='white', lag.max=60) #MA(9) sMA(1)
+pacf(DdmytsBC3, lag.max=60) #AR(11) sAR(2)
+```
+
+#****************************************************************
+# AJUSTE
+#****************************************************************
+
+```{r}
+m <- auto.arima(myts,
+                d=2,D=2,
+                max.p=11,max.q=9,max.P=2,max.Q=1,
+                start.p=0,start.q=0,start.P=0,start.Q=0,
+                stationary=TRUE,seasonal=FALSE,ic='bic',test='adf',
+                lambda="auto")
+coeftest(m)
+m
+```
+
+```{r}
+m <- Arima(myts, order=c(1,0,0), seasonal=list(order=c(2,0,0), period=12), include.mean=T, lambda=2, method="CSS-ML", xreg=NULL)
+coeftest(m)
+m
+
+## Outliers
+modelo <- m
+resi = residuals(modelo)
+coef = coefs2poly(modelo)
+outs = locate.outliers(resi,coef)
+n = length(myts)
+xreg = outliers.effects(outs, n)
+
+####Estimación del modelo con variables regresoras en funcion Arima
+mo <- Arima(myts, order=c(1,0,0), seasonal=list(order=c(2,0,0), period=12), include.mean=T, lambda=2, method="CSS-ML", xreg=xreg)
+coeftest(mo)
+mo
+```
+
+
+#****************************************************************
+# VALIDAR SUPUESTOS SOBRE LOS RESIDUALES DEL MODELO
+#****************************************************************
+
+```{r}
+modelo <- mo
+residuales <- modelo$residuals
+
+#1. Normalidad (H0:normalidad) 
+jarque.bera.test(residuales)
+#plot(density(residuales))
+
+#2. No autocorrelación (H0: independencia)
+Box.test(residuales, lag = (length(residuales)/4), type = "Ljung-Box", fitdf = 2)
+#acf(residuales, lag = 36)
+#pacf(residuales)
+
+#3. Varianza constante
+###Estadíticas CUSUM
+res=residuales
+cum=cumsum(res)/sd(res)
+N=length(res)
+cumq=cumsum(res^2)/sum(res^2)
+Af=0.948 ###Cuantil del 95% para la estadistica cusum
+co=0.12672 ####Valor del cuantil aproximado para cusumsq para n/2=200
+LS=Af*sqrt(N)+2*Af*c(1:length(res))/sqrt(N)
+LI=-LS
+LQS=co+(1:length(res))/N
+LQI=-co+(1:length(res))/N
+plot(cum,type="l",ylim=c(min(LI),max(LS)),xlab="t",ylab="",main="CUSUM")
+lines(LS,type="S",col="red")
+lines(LI,type="S",col="red")
+#CUSUM Square
+plot(cumq,type="l",xlab="t",ylab="",main="CUSUMSQ")                      
+lines(LQS,type="S",col="red")       
+lines(LQI,type="S",col="red")
+
+#4. Valor esperado es 0 (H0:mu = 0)
+t.test(residuales, mu=0, alternative = "two.sided")
+#wilcox.test(residuales, mu=0, alternative = "two.sided") #non parametric
+#plot(residuales)
+#abline(h=0, col="blue")
+```
+
+#****************************************************************
+# DESEMPEÑO
+#****************************************************************
+
+
+## Rolling
+```{r}
+serie <- myts
+n <- length(serie)
+init <- as.integer(n*0.7)
+
+reals <- list()
+preds <- list()
+for (k in init:n-1) {
+    split <- splitTrainTest(serie, numTrain=k)
+    train <- split$train
+    real <- split$test[1]
+    reals <- c(reals, real)
+    
+    refit <- Arima(train, order=c(1,0,0), seasonal=list(order=c(2,0,0), period=12), include.mean=T, lambda=2, method="CSS-ML", xreg=NULL)
+coeftest(m)
+m
+    
+    pred <- forecast(refit, h=1)$mean
+    preds <- c(preds, pred)
+    print(paste(k, real,pred))
+}
+
+df <- data.frame(real=unlist(reals), pred=unlist(preds))
+plot(df$real, type='l')
+lines(df$pred, col="blue")
+
+#Root Mean Squared Error
+ECM <- sqrt(mean((df$real - df$pred)**2))
+ECM
+```
+
+
+
